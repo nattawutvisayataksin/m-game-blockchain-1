@@ -16,6 +16,9 @@ npm run dev               # 3) เปิด http://localhost:3000/play แล้
 บัญชีทดสอบสำเร็จรูป: `demo@game.dev` / `demo1234` (หรือกดสมัครใหม่ในหน้าเว็บ)
 
 > `npm run setup` = `prisma db push` + `prisma seed` + เช็คระบบบัญชี
+>
+> หมายเหตุ: ถ้า port 3000 ถูกโปรแกรมอื่นครองอยู่ Next.js จะสลับไป port ว่างเอง
+> (เช่น `http://localhost:3001/play`) — ดู URL จากบรรทัด `- Local:` ตอนรัน `npm run dev`
 
 ## เกมเล่นอะไรได้ตอนนี้ (Phase A — เน้น "สนุก")
 
