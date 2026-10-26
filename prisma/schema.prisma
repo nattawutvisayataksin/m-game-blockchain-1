@@ -1,0 +1,327 @@
+// ============================================================
+// M-Game Blockchain — Prisma Schema
+// หลักการออกแบบ (Web2-first, Web3/Kub Chain-ready):
+//  1. ทุก Asset ที่มีมูลค่า (Item/Character/Land) ผูกกับ ItemTemplate เสมอ
+//     และมีฟิลด์ on-chain ครบ (tokenId/contractAddress/transactionHash/isOnChain)
+//     → พร้อม mapping เป็น ERC-721/ERC-1155 ใน Phase C โดยไม่ต้อง migrate โครงสร้าง
+//  2. ทุกการเปลี่ยนแปลงสกุลเงินในเกมต้องผ่าน Ledger แบบ double-entry
+//     (LedgerAccount/LedgerEntry/LedgerLine) → ตรวจสอบ (audit) ง่าย
+//     ก่อน mapping เป็น Token (ERC-20) ของจริงบน Kub Chain
+//  3. เก็บสถานะการเล่นฝั่ง Server เสมอ (Server-Authoritative) — Battle.state
+//     เป็น snapshot ที่ Server คำนวณผลเองทั้งหมด
+// เอกสารอ้างอิง: docs/02-database-schema.md
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+// ระบบ Login รองรับทั้ง Web2 (ตอนนี้) และ Web3 (อนาคต) — User เดียวมีได้หลายช่องทาง
+enum AuthProviderKind {
+  EMAIL_PASSWORD // Web2 password login (Phase A)
+  GOOGLE_OAUTH // Web2 social (subject = google sub)
+  WALLET_SIGN_IN // Web3 Sign-In with Ethereum/Kub chain (Phase B) — subject = wallet address
+}
+
+enum ItemKind {
+  WEAPON
+  ARMOR
+  ACCESSORY
+  CONSUMABLE
+  MATERIAL
+  CHARACTER
+  LAND // ที่ดินในเกม — ไม่เปิดขายก็มีหน้าเป็น NFT ได้ในอนาคต
+}
+
+enum Rarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+// มาตรฐาน token ที่จะเชื่อมในอนาคต (Phase C)
+enum TokenStandard {
+  NONE
+  ERC20
+  ERC721 // Character / Weapon / Land (uniqueness สูง)
+  ERC1155 // Consumable / Material (stack ได้)
+}
+
+enum InventoryStatus {
+  ACTIVE // อยู่ในเกม ใช้งานได้ปกติ
+  LOCKED // ถูกล็อกระหว่าง mint/export บน chain (กันใช้ซ้ำระหว่าง bridge)
+  EXPORTED // ถูกนำออกไปอยู่ใน wallet ผู้เล่นแล้ว (NFT บน chain)
+}
+
+enum BattleStatus {
+  IN_PROGRESS
+  WON
+  LOST
+  FLED // ผู้เล่นเลือกหนีตรงภาวะที่ยังไม่แพ้ กลายเป็น "หนีสำเร็จ"
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITY & ACCOUNTS
+// ---------------------------------------------------------------------------
+
+model User {
+  id String @id @default(cuid())
+  email String? @unique // nullable เพื่อรองรับผู้เล่นที่มาจาก wallet เพียงอย่างเดียวในอนาคต
+  passwordHash String? // ใช้กับ EMAIL_PASSWORD เท่านั้น
+  displayName String
+  role String @default("PLAYER") // PLAYER | ADMIN ฯลฯ
+
+  // ==== Web3 Identity (Phase B: Wallet Connect / SIWE) ====
+  // ห้าม nullable หายอย่างที่แต่งเอง: walletAddress nullable+unique ตาม requirement
+  walletAddress String? @unique // EVM address (เก็บ lowercase)
+  walletChainId BigInt? // chainId แนว Kub: 96 (Mainnet) / 25925 (Testnet)
+  walletLinkedAt DateTime?
+  signInNonce String? // ต่ออายุสำหรับ Sign-In with Ethereum (ใช้เมื่อเปิด endpoint)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  identities AuthIdentity[]
+  inventory UserInventory[]
+  ledgerAccounts LedgerAccount[]
+  rewardGrants RewardGrant[]
+  battles Battle[]
+}
+
+// 1 ผู้เล่นสามารถมีหลาย provider: email + google + wallet ชี้ไป User เดียวกัน
+model AuthIdentity {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  provider AuthProviderKind
+  subject String // EMAIL_PASSWORD: email, GOOGLE: sub, WALLET: address
+
+  createdAt DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// ASSET SYSTEM — ItemTemplate (master data) + UserInventory (instance = นึกถึง NFT)
+// ---------------------------------------------------------------------------
+
+model ItemTemplate {
+  id String @id @default(cuid())
+  code String @unique // เช่น weapon_iron_sword — ใช้อ้างใน seed/drops/ระบบ
+  name String
+  kind ItemKind
+  rarity Rarity
+  description String?
+  imageUri String? // รูปภาพ (https:// หรือ ipfs://)
+
+  // ค่าสถิติตั้งต้น (hp/atk/def/spd/crit/...) — JSON เพื่อยืดหยุ่นต่อการเพิ่มระบบเกมในอนาคต
+  attributes Json
+
+  fungible Boolean @default(false) // true = stack ได้เป็นต้น Consumable (แนว ERC-1155)
+  maxSupply Int? // null = ไม่จำกัด
+  shopPrice BigInt? // null = ไม่ขายในร้าน — ตั้งเมื่อต้องการขาย (อ่านค่าหน่วยเป็น GOLD)
+
+  // ==== NFT Metadata (Phase C / IPFS-ready) ====
+  // metadata JSON ตามมาตรฐาน token metadata (name/description/image/attributes)
+  // สร้างได้แล้วที่ src/server/nft/metadata.ts (พร้อมใช้ตอน upload ขึ้น IPFS)
+  metadataUri String? @db.Text // ipfs://<CID> หรือ https URI ของไฟล์ metadata
+  metadataHash String? // sha256 ของไฟล์ metadata (ตรวจจริงภายหลัง pin สำเร็จ)
+  contractAddress String? // address ของ collection contract ที่เทมเพลตทำ mint ผ่าน
+  tokenStandard TokenStandard @default(NONE)
+
+  createdAt DateTime @default(now())
+
+  inventory UserInventory[]
+  rewardGrants RewardGrant[]
+}
+
+// 1 instance = 1 row ≈ 1 token ในอนาคต (กับ ERC-721) — สถาปัตยกรรมสำคัญของโปรเจกต์
+model UserInventory {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  templateId String
+  template ItemTemplate @relation(fields: [templateId], references: [id])
+
+  status InventoryStatus @default(ACTIVE)
+  quantity Int @default(1) // Item fungible (consumable) stack ใน row เดียว
+  // สถานะเฉพาะตัว (level/exp/hp/equipment ฯลฯ) — server-authoritative อย่างเดียว
+  instanceData Json
+  earnedAt DateTime @default(now())
+
+  // ==== Web3 — ทุกฟิลด์พร้อม Phase B/C แต่ยังไม่ active ====
+  isMinted Boolean @default(false)
+  ownerAddress String? // เจ้าของฝั่ง on-chain (mirror ของ owner เมื่อ mint/export แล้ว)
+  tokenId String? // ERC-721/1155 token id — null จนกว่าจะ mint
+  contractAddress String? // collection contract ที่ mint ด้วย — null จนกว่าจะ mint
+  tokenStandard TokenStandard @default(NONE)
+  transactionHash String? // tx ล่าสุดที่เกี่ยวกับ asset (mint/export/transfer)
+  blockNumber BigInt?
+  isOnChain Boolean @default(false) // true = สถานะบน chain เป็น "master" แล้ว
+  mintedAt DateTime?
+  exportedAt DateTime?
+
+  battles Battle[]
+
+  @@index([userId, status])
+  @@index([templateId])
+}
+
+// ---------------------------------------------------------------------------
+// GAME CONTENT & SERVER-AUTHORITATIVE BATTLE
+// ---------------------------------------------------------------------------
+
+model StageTemplate {
+  id String @id @default(cuid())
+  code String @unique
+  name String
+  order Int @default(0)
+  description String?
+  // Snapshot ของศัตรูตัวต่อบท: { name, hp, atk, def, spd, expReward, goldMin, goldMax }
+  enemy Json
+  // ตาราง drop: [{ templateCode, chance, qty }]
+  dropTable Json
+
+  battles Battle[]
+}
+
+model Battle {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  stageId String
+  stage StageTemplate @relation(fields: [stageId], references: [id])
+  characterInvId String
+  characterInv UserInventory @relation(fields: [characterInvId], references: [id])
+
+  status BattleStatus @default(IN_PROGRESS)
+  turn Int @default(0)
+  // state snapshot ของการต่อสู้ (Server คำนวณเองหมด ไม่เชื่อ Client)
+  state Json
+  rewardsGranted Boolean @default(false)
+
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([userId, status])
+}
+
+// ---------------------------------------------------------------------------
+// REWARDS — "ใบสั่งรับรางวัล": ชนะแล้วออกใบ PENDING ก่อน ผู้เล่นค่อย claim
+// (พรอบแบบนี้เพื่อรองรับอนาคตที่รางวัลขึ้น chain ผ่าน Server-side minting)
+// ---------------------------------------------------------------------------
+
+enum RewardType {
+  GOLD
+  EXP
+  ITEM
+}
+
+enum RewardStatus {
+  PENDING
+  CLAIMED
+  CANCELLED
+}
+
+model RewardGrant {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+
+  refType String // "BATTLE"
+  refId String // battleId
+  type RewardType
+  quantity BigInt? // GOLD / EXP
+  itemTemplateId String? // type = ITEM
+  itemTemplate ItemTemplate? @relation(fields: [itemTemplateId], references: [id])
+
+  status RewardStatus @default(PENDING)
+  grantedAt DateTime @default(now())
+  claimedAt DateTime?
+  claimEntryId String? // LedgerEntry ที่เกิดจากการ claim (audit trail)
+
+  @@index([userId, status])
+  @@index([refType, refId])
+}
+
+// ---------------------------------------------------------------------------
+// GAME LEDGER — Double-entry bookkeeping (ก่อน mapping เป็น ERC-20 บน Kub Chain)
+//   • กติกา: ทุก entry ต้อง balance (sum DEBIT == sum CREDIT) → enforce ที่ LedgerService
+//   • balance ของบัญชี = SUM(DEBIT) - SUM(CREDIT)
+//   • mapping อนาคต (Phase C):
+//       LedgerAccount PLAYER  → token balance ของผู้เล่น / (ในอนาคต) wallet
+//       LedgerAccount MINT    → สัญญา Game Token (mint role ของ server)
+//       LedgerAccount BURN    → burn เมื่อผู้เล่นนำเหรียญออกจากเกม (exit)
+//       LedgerAccount TREASURY/SHOP → economy sink/source ของระบบ
+// ---------------------------------------------------------------------------
+
+enum LedgerAccountType {
+  PLAYER
+  SYSTEM
+  MINT
+  BURN
+  TREASURY
+}
+
+enum LedgerSide {
+  DEBIT
+  CREDIT
+}
+
+enum CurrencyCode {
+  GOLD // จากนี้ map เป็น ERC- reward token บน Kub Chain ใน Phase C
+}
+
+model LedgerAccount {
+  id String @id @default(cuid())
+  code String @unique // เช่น "player:<userId>", "mint", "burn", "system:treasury", "system:shop"
+  name String
+  type LedgerAccountType
+  currency CurrencyCode
+  userId String? // บัญชีของผู้เล่นทั่วไป
+  user User? @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  lines LedgerLine[]
+}
+
+model LedgerEntry {
+  id String @id @default(cuid())
+  refType String // SIGNUP_BONUS | BATTLE_REWARD | SHOP_PURCHASE | (อนาคต: TOKEN_MINT, TOKEN_BURN)
+  refId String?
+  memo String?
+
+  createdAt DateTime @default(now())
+
+  lines LedgerLine[]
+
+  @@index([refType, refId])
+}
+
+model LedgerLine {
+  id String @id @default(cuid())
+  entryId String
+  entry LedgerEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId String
+  account LedgerAccount @relation(fields: [accountId], references: [id])
+
+  side LedgerSide
+  amount BigInt
+  currency CurrencyCode
+
+  @@index([accountId])
+}
+
