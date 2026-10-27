@@ -1,12 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/http";
-import {
-  ACCOUNT_CODES,
-  playerAccountCode,
-  playerBalance,
-  postEntry,
-} from "@/server/ledger/ledger";
 import { characterStats, gainExp } from "./stats";
 
 // ============================================================
@@ -90,20 +84,7 @@ export async function claimRewards(userId: string, grantIds?: string[]): Promise
 
         if (grant.type === "GOLD" && grant.quantity) {
           goldTotal += grant.quantity;
-          // กลางบัญชี double-entry: ผู้เล่นได้ / treasury ลดลง
-          const entryId = await postEntry(tx, {
-            refType: "REWARD_CLAIM",
-            refId: grant.id,
-            memo: `รับรางวัล GOLD จาก ${grant.refType}`,
-            lines: [
-              { accountCode: playerAccountCode(userId), side: "DEBIT", amount: grant.quantity },
-              { accountCode: ACCOUNT_CODES.treasury, side: "CREDIT", amount: grant.quantity },
-            ],
-          });
-          await tx.rewardGrant.update({
-            where: { id: grant.id },
-            data: { claimEntryId: entryId },
-          });
+          await tx.user.update({ where: { id: userId }, data: { goldBalance: { increment: grant.quantity } } });
         }
 
         if (grant.type === "ITEM" && grant.itemTemplate) {
@@ -191,7 +172,8 @@ export async function claimRewards(userId: string, grantIds?: string[]): Promise
         throw new ApiError(404, "NOTHING_TO_CLAIM", "รางวัลนี้ถูกรับไปแล้วหมด");
       }
 
-      const newBalance = await playerBalance(tx, userId);
+      const player = await tx.user.findUnique({ where: { id: userId }, select: { goldBalance: true } });
+      const newBalance = player?.goldBalance ?? 0n;
       return { goldTotal, newBalance };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },

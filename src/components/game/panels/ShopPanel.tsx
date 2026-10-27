@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// ShopPanel — ร้านค้า: ซื้อด้วย GOLD (เดิน Ledger จริงบน server)
+// ShopPanel — ร้านค้า: ซื้อด้วย GOLD โดยหักยอดตรงจากบัญชีผู้เล่น
 // ============================================================
 
 import { useState } from "react";
@@ -90,7 +90,7 @@ export default function ShopPanel(): ReactElement {
         {shop.length === 0 && <div className="muted">ร้านยังเปิดไม่สอง — ลองใหม่อีกที</div>}
       </div>
       <div className="shop-foot muted">
-        ทุกการซื้อเดิน Ledger double-entry จริง (DEBIT shop → CREDIT player) ตรวจได้ด้วย npm run audit:ledger
+        การซื้อหัก GOLD จากยอดผู้เล่นโดยตรง ไม่มี Ledger และไม่มีค่าธรรมเนียมแฝง
       </div>
     </div>
   );

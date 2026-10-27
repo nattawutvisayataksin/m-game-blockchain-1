@@ -16,6 +16,7 @@ import {
   pendingRewards as apiPending,
   purchase as apiPurchase,
   register as apiRegister,
+  startGuest as apiStartGuest,
   shopList as apiShop,
   stages as apiStages,
 } from "./api";
@@ -52,6 +53,7 @@ interface GameState {
 
   login(email: string, password: string): Promise<string | null>;
   register(email: string, password: string, displayName: string): Promise<string | null>;
+  startGuest(): Promise<string | null>;
   logout(): void;
 
   chooseStage(stage: StageInfo): void;
@@ -170,6 +172,18 @@ export const useGame = create<GameState>((set, get) => {
         const u = await me();
         set({ user: u, gold: u.goldBalance });
         get().showBanner("ยินดีต้อนรับนักผจญภัย! ออกสำรวจด่านแรกได้เลย ✦");
+        return null;
+      } catch (e) {
+        return get().errText(e);
+      }
+    },
+
+    async startGuest() {
+      try {
+        await apiStartGuest();
+        await get().refresh();
+        set({ screen: "hub", booted: true });
+        get().showBanner("เริ่มเกม V2 แบบ Guest แล้ว — เล่นได้ทันที ไม่ต้องสมัครสมาชิก");
         return null;
       } catch (e) {
         return get().errText(e);

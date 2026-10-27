@@ -14,15 +14,16 @@ import { characterStats, enemyStats } from "./stats";
 //   • ชนะ → สร้าง RewardGrant สถานะ PENDING ก่อน → ผู้เล่นค่อย "claim"
 // ============================================================
 
-export type BattleAction = "ATTACK" | "SKILL" | "GUARD" | "FLEE";
+export type BattleAction = "ATTACK" | "SKILL" | "GUARD" | "FLEE" | "FINISHER";
 
-export const BATTLE_ACTIONS: BattleAction[] = ["ATTACK", "SKILL", "GUARD", "FLEE"];
+export const BATTLE_ACTIONS: BattleAction[] = ["ATTACK", "SKILL", "GUARD", "FLEE", "FINISHER"];
 
 // เหตุการณ์ที่ server คำนวณแล้ว "ไล่ลำดับส่งกลับ" ให้ client replay เป็นอนิเมชัน
 // (seq ต่อเนื่องกัน ใช้กรองว่าอะไรที่ client เล่นไปแล้ว)
 export type BattleEvent =
   | { seq: number; kind: "player_attack"; damage: number; crit: boolean; enemyHpAfter: number }
   | { seq: number; kind: "player_skill"; damage: number; crit: boolean; enemyHpAfter: number }
+  | { seq: number; kind: "player_finisher"; damage: number; crit: boolean; enemyHpAfter: number }
   | { seq: number; kind: "player_guard" }
   | { seq: number; kind: "player_flee"; success: boolean }
   | {
@@ -51,6 +52,7 @@ interface BattleCoreState {
   player: CombatantState;
   enemy: CombatantState;
   skillCd: number; // > 0 = ยังเรียกใช้สกิลไม่ได้อีกกี่ turn
+  momentum: number;
   defending: boolean; // ลดดาเมจศัตรู 50% หนึ่งตา
   log: string[];
   events: BattleEvent[]; // ประวัติเหตุการณ์ (แคปที่ MAX_EVENTS)
@@ -95,6 +97,7 @@ function tickSkillCd(state: BattleCoreState): void {
 type NewBattleEvent =
   | { kind: "player_attack"; damage: number; crit: boolean; enemyHpAfter: number }
   | { kind: "player_skill"; damage: number; crit: boolean; enemyHpAfter: number }
+  | { kind: "player_finisher"; damage: number; crit: boolean; enemyHpAfter: number }
   | { kind: "player_guard" }
   | { kind: "player_flee"; success: boolean }
   | { kind: "enemy_attack"; damage: number; crit: boolean; heavy: boolean; playerHpAfter: number }
@@ -130,6 +133,7 @@ export interface BattleView {
   player: { name: string; hp: number; maxHp: number };
   enemy: { name: string; hp: number; maxHp: number };
   skillCd: number;
+  momentum: number;
   log: string[];
   events?: BattleEvent[];
   rewards?: {
@@ -161,6 +165,7 @@ function viewOf(
     player: { name: state.player.name, hp: state.player.hp, maxHp: state.player.maxHp },
     enemy: { name: state.enemy.name, hp: state.enemy.hp, maxHp: state.enemy.maxHp },
     skillCd: state.skillCd,
+    momentum: state.momentum,
     log: state.log.slice(-12),
   };
   if (state.events && state.events.length > 0) view.events = state.events;
@@ -218,6 +223,9 @@ export async function startBattle(userId: string, input: StartBattleInput): Prom
 
   // 3) อาวุธ (ถ้าส่งมา) — เพิ่ม atk ให้ตัวละคร
   let weaponAtk = 0;
+  let weaponDef = 0;
+  let weaponSpd = 0;
+  let weaponCrit = 0;
   if (input.weaponInvId) {
     const weapon = await prisma.userInventory.findUnique({
       where: { id: input.weaponInvId },
@@ -227,16 +235,17 @@ export async function startBattle(userId: string, input: StartBattleInput): Prom
     if (weapon.template.kind !== "WEAPON") throw badRequest("asset ที่จะติดตั้งต้องเป็นชนิด WEAPON");
     const wAttrs = (weapon.template.attributes ?? {}) as Record<string, unknown>;
     weaponAtk = clampZero(Number(wAttrs.atk ?? 0));
+    weaponDef = clampZero(Number(wAttrs.def ?? 0));
+    weaponSpd = clampZero(Number(wAttrs.spd ?? 0));
+    weaponCrit = Math.max(0, Number(wAttrs.crit ?? 0));
   }
 
-  // 4) กันสร้างการต่อสู้ซ้อนไว้หลายอัน
+  // 4) ปิด battle เก่าที่ค้างจากแท็บ/รีเฟรชโดยอัตโนมัติ (ไม่มีรางวัล)
   const ongoing = await prisma.battle.findFirst({
     where: { userId, status: "IN_PROGRESS" },
     select: { id: true },
   });
-  if (ongoing) {
-    throw conflict("มีการต่อสู้ค้างอยู่ — จบการต่อสู้เดิมก่อน (submit action หรือ FLEE)");
-  }
+  if (ongoing) await abandonOngoingBattle(userId);
 
   // 5) อ่านสเตจ
   const stage = await prisma.stageTemplate.findUnique({ where: { code: input.stageCode } });
@@ -253,9 +262,9 @@ export async function startBattle(userId: string, input: StartBattleInput): Prom
     hp: pStats.hp,
     maxHp: pStats.hp,
     atk: pStats.atk + weaponAtk,
-    def: pStats.def,
-    spd: pStats.spd,
-    crit: pStats.crit,
+    def: pStats.def + weaponDef,
+    spd: pStats.spd + weaponSpd,
+    crit: Math.min(0.95, pStats.crit + weaponCrit),
   };
   const enemyCombatant: CombatantState = {
     name: eStats.name,
@@ -271,6 +280,7 @@ export async function startBattle(userId: string, input: StartBattleInput): Prom
     player: playerCombatant,
     enemy: enemyCombatant,
     skillCd: 0,
+    momentum: 0,
     defending: false,
     log: [
       `⚔️ เริ่มการต่อสู้: ${playerCombatant.name} ปะทะ ${enemyCombatant.name}`,
@@ -324,6 +334,7 @@ export async function submitAction(
     case "ATTACK": {
       const { dmg, crit } = damage(state.player, state.enemy, 1);
       applyDamage(state.enemy, dmg);
+      state.momentum = Math.min(100, state.momentum + (crit ? 18 : 12));
       addLog(state, `🗡️ ${state.player.name} โจมตี สร้างดาเมจ ${dmg}${crit ? " (คริ)" : ""}`);
       pushEvent(state, { kind: "player_attack", damage: dmg, crit, enemyHpAfter: state.enemy.hp });
       tickSkillCd(state);
@@ -335,13 +346,24 @@ export async function submitAction(
       }
       const { dmg, crit } = damage(state.player, state.enemy, 1.8);
       applyDamage(state.enemy, dmg);
+      state.momentum = Math.min(100, state.momentum + 20);
       state.skillCd = 2;
       addLog(state, `✨ ${state.player.name} ปล่อยสกิล${crit ? " (คริ)" : ""} ทำดาเมจ ${dmg}`);
       pushEvent(state, { kind: "player_skill", damage: dmg, crit, enemyHpAfter: state.enemy.hp });
       break;
     }
+    case "FINISHER": {
+      if (state.momentum < 100) throw badRequest("Momentum ยังไม่เต็ม");
+      const { dmg, crit } = damage(state.player, state.enemy, 3.2);
+      applyDamage(state.enemy, dmg);
+      state.momentum = 0;
+      addLog(state, `💥 FINISHER! ${state.player.name} ปลดปล่อยพลังทำดาเมจ ${dmg}`);
+      pushEvent(state, { kind: "player_finisher", damage: dmg, crit, enemyHpAfter: state.enemy.hp });
+      break;
+    }
     case "GUARD": {
       state.defending = true;
+      state.momentum = Math.min(100, state.momentum + 25);
       addLog(state, `🛡️ ${state.player.name} ตั้งการป้องกัน`);
       pushEvent(state, { kind: "player_guard" });
       tickSkillCd(state);
@@ -423,6 +445,35 @@ export async function getBattleView(userId: string, battleId: string): Promise<B
   if (!row || row.userId !== userId) throw notFound("ไม่พบการต่อสู้นี้");
   const rewards = row.status === "WON" ? await battleRewardsView(row.id) : undefined;
   return viewOf(row, rewards);
+}
+
+/**
+ * ปิดการต่อสู้ที่ค้างอยู่โดยไม่มีรางวัล
+ * ใช้เป็น recovery path เมื่อผู้เล่นปิดแท็บ/รีเฟรชระหว่างการต่อสู้
+ */
+export async function abandonOngoingBattle(userId: string): Promise<BattleView | null> {
+  const row = await prisma.battle.findFirst({
+    where: { userId, status: "IN_PROGRESS" },
+    orderBy: { startedAt: "desc" },
+    include: { stage: { select: { code: true, name: true } } },
+  });
+  if (!row) return null;
+
+  const state = row.state as unknown as BattleCoreState;
+  addLog(state, "💨 การต่อสู้ถูกยกเลิกจากเมนูกู้คืน (ไม่มีรางวัล)");
+  pushEvent(state, { kind: "player_flee", success: true });
+  pushEvent(state, { kind: "battle_end", result: "FLED" });
+
+  const updated = await prisma.battle.update({
+    where: { id: row.id },
+    data: {
+      status: "FLED",
+      finishedAt: new Date(),
+      state: state as unknown as Prisma.InputJsonValue,
+    },
+    include: { stage: { select: { code: true, name: true } } },
+  });
+  return viewOf(updated);
 }
 
 // ------------------------------------------------------------

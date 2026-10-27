@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ApiError, forbidden, notFound } from "@/lib/http";
-import { ACCOUNT_CODES, playerAccountCode, playerBalance, postEntry } from "@/server/ledger/ledger";
 
 // ============================================================
 // SHOP — สาธิตฝั่ง economy "ผู้เล่นจ่ายเหรียญ" (sink)
@@ -54,23 +53,17 @@ export async function purchaseItem(userId: string, templateCode: string, qty: nu
       const price = template.shopPrice * BigInt(qtyEffective);
 
       // 1) ยอดเงินผู้เล่น ณ ขณะนี้ = SUM(DEBIT) − SUM(CREDIT) ของบัญชี player
-      const balance = await playerBalance(tx, userId);
+      const player = await tx.user.findUnique({ where: { id: userId }, select: { goldBalance: true } });
+      if (!player) throw notFound("ไม่พบบัญชีผู้เล่น");
+      const balance = player.goldBalance;
       if (balance < price) {
         throw new ApiError(402, "INSUFFICIENT_GOLD", `เหรียญไม่พอ ต้องการ ${price} มีอยู่ ${balance}`);
       }
 
-      // 2) เดินบัญชี: shop รับ → player ลด
-      const entryId = await postEntry(tx, {
-        refType: "SHOP_PURCHASE",
-        refId: template.code,
-        memo: `ซื้อ ${template.name} ×${qtyEffective}`,
-        lines: [
-          { accountCode: ACCOUNT_CODES.shop, side: "DEBIT", amount: price },
-          { accountCode: playerAccountCode(userId), side: "CREDIT", amount: price },
-        ],
-      });
+      // หักเงินตรงจาก User โดยไม่สร้าง Ledger entry
+      await tx.user.update({ where: { id: userId }, data: { goldBalance: { decrement: price } } });
 
-      // 3) เติมของลงคลัง
+      // เติมของลงคลัง
       let inventoryId: string;
       if (template.fungible) {
         const existing = await tx.userInventory.findFirst({
@@ -106,8 +99,8 @@ export async function purchaseItem(userId: string, templateCode: string, qty: nu
         inventoryId = created.id;
       }
 
-      const finalBalance = await playerBalance(tx, userId);
-      return { entryId, inventoryId, finalBalance, price };
+      const finalBalance = balance - price;
+      return { inventoryId, finalBalance, price };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15_000 },
   );

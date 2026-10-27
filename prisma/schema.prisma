@@ -94,7 +94,8 @@ model User {
 
   identities AuthIdentity[]
   inventory UserInventory[]
-  ledgerAccounts LedgerAccount[]
+  goldBalance BigInt @default(0)
+  ledgerAccounts LedgerAccount[] // legacy relation; gameplay no longer uses Ledger
   rewardGrants RewardGrant[]
   battles Battle[]
 }
@@ -250,14 +251,15 @@ model RewardGrant {
   status RewardStatus @default(PENDING)
   grantedAt DateTime @default(now())
   claimedAt DateTime?
-  claimEntryId String? // LedgerEntry ที่เกิดจากการ claim (audit trail)
+  claimEntryId String? // deprecated; retained for backward-compatible rows
 
   @@index([userId, status])
   @@index([refType, refId])
 }
 
 // ---------------------------------------------------------------------------
-// GAME LEDGER — Double-entry bookkeeping (ก่อน mapping เป็น ERC-20 บน Kub Chain)
+// Legacy ledger models retained temporarily for database compatibility.
+// Gameplay no longer reads or writes these tables.
 //   • กติกา: ทุก entry ต้อง balance (sum DEBIT == sum CREDIT) → enforce ที่ LedgerService
 //   • balance ของบัญชี = SUM(DEBIT) - SUM(CREDIT)
 //   • mapping อนาคต (Phase C):

@@ -4,16 +4,17 @@
 // HubScreen — ฐานหลัก: hero card + เมนู (คลัง/ร้าน/รางวัล/wallet)
 // ============================================================
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGame } from "../store";
-import { drawSprite, heroSprite, buildIcon, itemIconByCode } from "../pixel/sprites";
+import { drawSprite, heroSprite, buildIcon, itemIconByCode, type HeroAppearance, type HeroOutfit } from "../pixel/sprites";
+import { customizeCharacter } from "../api";
 import type { InventoryItem } from "../types";
 import InventoryPanel from "../panels/InventoryPanel";
 import ShopPanel from "../panels/ShopPanel";
 import RewardsPanel from "../panels/RewardsPanel";
 import { sfx } from "../sfx";
 
-function HeroPortrait(): React.ReactElement {
+function HeroPortrait({ appearance = "ember", outfit = "traveler" }: { appearance?: string; outfit?: string }): React.ReactElement {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -35,9 +36,9 @@ function HeroPortrait(): React.ReactElement {
       const y = (i * 23) % 40;
       ctx.fillRect(x, y, 1, 1);
     }
-    const hero = heroSprite();
+    const hero = heroSprite(appearance as HeroAppearance, outfit as HeroOutfit);
     drawSprite(ctx, hero, cv.width / 2, cv.height - 6, { scaleY: 2.4, scaleX: 2.4 });
-  }, []);
+  }, [appearance, outfit]);
 
   return <canvas ref={ref} width={64} height={70} className="hero-portrait" />;
 }
@@ -73,6 +74,9 @@ export default function HubScreen() {
   const logout = useGame((s) => s.logout);
 
   const character = items.find((i) => i.kind === "CHARACTER") ?? null;
+  const [appearance, setAppearance] = useState<HeroAppearance>((character?.instance.appearance as HeroAppearance) ?? "ember");
+  const [outfit, setOutfit] = useState<HeroOutfit>((character?.instance.outfit as HeroOutfit) ?? "traveler");
+  const [customizing, setCustomizing] = useState(false);
   const herbalCount = items
     .filter((i) => i.code.includes("potion"))
     .reduce((n, i) => n + i.quantity, 0);
@@ -100,14 +104,38 @@ export default function HubScreen() {
       <div className="hub-body">
         <aside className="hero-card">
           <div className="hero-frame-wrap">
-            <HeroPortrait />
+            <HeroPortrait appearance={appearance} outfit={outfit} />
           </div>
           <div className="hero-name">{character?.name ?? "Recruit"}</div>
           <div className="hero-stats">
             {character?.instance.level != null && <div>Lv. {character.instance.level}</div>}
-            {character?.instance.exp != null && <div>EXP {character.instance.exp}</div>}
+            {character?.instance.exp != null && <div>EXP {character.instance.exp} / {character.instance.nextLevelExp ?? "?"}</div>}
             {character?.instance.currentHp != null && <div>❤️ {character.instance.currentHp}</div>}
+            {character?.instance.stats && <div className="hero-stat-grid">
+              <span>❤️ {character.instance.stats.hp}</span><span>⚔️ {character.instance.stats.atk}</span>
+              <span>🛡️ {character.instance.stats.def}</span><span>⚡ {character.instance.stats.spd}</span>
+              <span>🎯 {Math.round(character.instance.stats.crit * 100)}%</span>
+            </div>}
           </div>
+          {character?.instance.level != null && <div className="level-progress">
+            <div className="level-progress-head"><span>LEVEL PROGRESS</span><span>{character.instance.exp ?? 0}/{character.instance.nextLevelExp ?? "?"}</span></div>
+            <div className="level-progress-track"><div style={{ width: `${Math.min(100, ((character.instance.exp ?? 0) / Math.max(1, character.instance.nextLevelExp ?? 1)) * 100)}%` }} /></div>
+            <div className="level-reward-note">เลเวลอัป: HP +22 · ATK +4 · DEF +2 · SPD +1 · CRIT +0.2%</div>
+          </div>}
+          {character && (
+            <button className="btn btn-ghost btn-sm customize-btn" disabled={customizing} onClick={async () => {
+              setCustomizing(true);
+              try {
+                const nextAppearance: HeroAppearance = appearance === "ember" ? "ocean" : appearance === "ocean" ? "moon" : "ember";
+                const nextOutfit: HeroOutfit = outfit === "traveler" ? "guardian" : outfit === "guardian" ? "rogue" : "traveler";
+                await customizeCharacter(character.id, nextAppearance, nextOutfit);
+                setAppearance(nextAppearance); setOutfit(nextOutfit);
+                useGame.getState().showBanner(`ปรับโฉมเป็น ${nextAppearance} / ${nextOutfit} แล้ว`);
+                void useGame.getState().refresh();
+              } catch (e) { useGame.getState().showBanner(useGame.getState().errText(e), "error"); }
+              setCustomizing(false);
+            }}>{customizing ? "⏳ กำลังปรับโฉม…" : "🎨 เปลี่ยนหน้าตา / ชุด"}</button>
+          )}
         </aside>
 
         <main className="menu-col">

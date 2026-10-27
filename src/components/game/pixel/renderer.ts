@@ -15,6 +15,9 @@ import {
   slimeSprite,
   goblinSprite,
   kingSlimeSprite,
+  wraithSprite,
+  sporeBeastSprite,
+  colossusSprite,
   OUTLINE,
   type BuiltSprite,
 } from "./sprites";
@@ -32,6 +35,7 @@ const H_BAR = 7;
 const DUR: Record<BattleEvent["kind"], number> = {
   player_attack: 520,
   player_skill: 660,
+  player_finisher: 980,
   player_guard: 430,
   player_flee: 640,
   enemy_attack: 540,
@@ -58,12 +62,18 @@ function smooth(p: number): number {
 }
 
 export function sceneKindOf(stageCode: string): SceneKind {
+  if (stageCode.includes("04") || stageCode.includes("ruins")) return "ruins" as SceneKind;
+  if (stageCode.includes("05") || stageCode.includes("marsh")) return "marsh" as SceneKind;
+  if (stageCode.includes("06") || stageCode.includes("temple")) return "temple" as SceneKind;
   if (stageCode.includes("02") || stageCode.includes("goblin") || stageCode.includes("camp")) return "camp";
   if (stageCode.includes("03") || stageCode.includes("king") || stageCode.includes("lair")) return "lair";
   return "fields";
 }
 
 function enemySpriteFor(stageCode: string): BuiltSprite {
+  if (stageCode.includes("04") || stageCode.includes("ruins")) return wraithSprite();
+  if (stageCode.includes("05") || stageCode.includes("marsh")) return sporeBeastSprite();
+  if (stageCode.includes("06") || stageCode.includes("temple")) return colossusSprite();
   if (stageCode.includes("03") || stageCode.includes("king")) return kingSlimeSprite();
   if (stageCode.includes("02") || stageCode.includes("goblin")) return goblinSprite();
   return slimeSprite();
@@ -71,6 +81,8 @@ function enemySpriteFor(stageCode: string): BuiltSprite {
 
 export interface RendererInit {
   stageCode: string;
+  heroAppearance?: "ember" | "ocean" | "moon";
+  heroOutfit?: "traveler" | "guardian" | "rogue";
   playerHp: number;
   playerMaxHp: number;
   enemyHp: number;
@@ -84,7 +96,7 @@ export class BattleRenderer {
   private sceneCv: HTMLCanvasElement;
   private sceneCtx: CanvasRenderingContext2D;
 
-  private heroSpr = heroSprite();
+  private heroSpr: BuiltSprite;
   private enemySpr: BuiltSprite;
 
   private raf = 0;
@@ -118,6 +130,8 @@ export class BattleRenderer {
   private slashUntil = 0;
   private slashAt = { x: 0, y: 0 };
   private slashHeavy = false;
+  private skillUntil = 0;
+  private skillAt = { x: 0, y: 0 };
   private enemyDeathAt = -1;
   private heroDown = false;
   private heroRanAway = false;
@@ -132,6 +146,7 @@ export class BattleRenderer {
     this.ctx = c;
     this.ctx.imageSmoothingEnabled = false;
     this.stageCode = init.stageCode;
+    this.heroSpr = heroSprite(init.heroAppearance, init.heroOutfit);
     this.enemySpr = enemySpriteFor(init.stageCode);
 
     this.sceneCv = document.createElement("canvas");
@@ -344,12 +359,27 @@ export class BattleRenderer {
       case "player_skill": {
         this.dash("hero", 0, 26, 0, 150);
         this.schedule(160, () => {
+          this.skillUntil = this.now + 420;
+          this.skillAt = { x: ENEMY_X, y: GROUND_Y - 18 };
           this.whiteAlpha = 0.18;
           this.whiteUntil = now + 120;
           this.burst(ENEMY_X - 12, GROUND_Y - 18, ["#c9a4ef", "#ffffff", "#9a5cd0"], 12);
           this.hitEnemy(ev.damage ?? 0, ev.crit === true, ev.enemyHpAfter ?? 0, true);
         });
         this.dash("hero", 26, 0, 330, 220);
+        break;
+      }
+      case "player_finisher": {
+        this.dash("hero", 0, 18, 0, 180);
+        this.schedule(190, () => {
+          this.skillUntil = this.now + 680;
+          this.skillAt = { x: ENEMY_X, y: GROUND_Y - 18 };
+          this.whiteAlpha = 0.3;
+          this.whiteUntil = this.now + 180;
+          this.burst(ENEMY_X, GROUND_Y - 18, ["#fff4b0", "#ffb35c", "#e66d4c", "#ffffff"], 34, 1.8);
+          this.hitEnemy(ev.damage ?? 0, ev.crit === true, ev.enemyHpAfter ?? 0, true);
+        });
+        this.dash("hero", 18, 0, 550, 260);
         break;
       }
       case "player_guard": {
@@ -437,6 +467,7 @@ export class BattleRenderer {
 
     this.drawActors(now, ctx);
     this.drawSlashArc(now, ctx);
+    this.drawSkillEffect(now, ctx);
     this.drawParticles(ctx);
     ctx.restore();
 
@@ -537,6 +568,39 @@ export class BattleRenderer {
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  private drawSkillEffect(now: number, ctx: CanvasRenderingContext2D): void {
+    if (now >= this.skillUntil) return;
+    const elapsed = 420 - (this.skillUntil - now);
+    const p = clamp(elapsed / 420, 0, 1);
+    const fade = clamp(1 - p, 0, 1);
+    const x = this.skillAt.x;
+    const y = this.skillAt.y;
+
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // Large violet magic sigil, clearly distinct from the physical slash.
+    ctx.strokeStyle = "#d9b3ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 10 + p * 30, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#8b5bd6";
+    ctx.beginPath();
+    ctx.arc(x, y, 5 + p * 18, -Math.PI / 4, Math.PI * 1.3);
+    ctx.stroke();
+    ctx.fillStyle = "#f4ddff";
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4 + p * 3;
+      const r = 8 + p * 22;
+      ctx.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r), 2, 2);
+    }
+    // Vertical arcane beam from the hero toward the target.
+    ctx.fillStyle = "rgba(183, 121, 255, 0.42)";
+    ctx.fillRect(HERO_X + 12, 24, Math.max(2, Math.round((x - HERO_X) * p)), 3);
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   private drawParticles(ctx: CanvasRenderingContext2D): void {

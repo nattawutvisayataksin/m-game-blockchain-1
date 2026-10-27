@@ -3,7 +3,7 @@
 //  ข้อดี: ผลเสมอกัน ไม่พึ่งไฟล์ภาพ, cache อัตโนมัติ, เวอร์ชัน hit-flash
 // ============================================================
 
-export const OUTLINE = "#241a2f";
+export const OUTLINE = "#171526";
 
 export interface BuiltSprite {
   frame: HTMLCanvasElement;
@@ -97,154 +97,151 @@ function box(
 }
 
 // ============================================================
-// HERO (Recruit) 14×20 — หันขวา
+// HERO (Recruit) 24×32 — redesigned readable silhouette, facing right
 // ============================================================
-function drawHero(ctx: CanvasRenderingContext2D): void {
+function drawHero(ctx: CanvasRenderingContext2D, appearance: HeroAppearance = "ember", outfit: HeroOutfit = "traveler"): void {
+  const hairByAppearance: Record<HeroAppearance, string> = { ember: "#d2764d", ocean: "#6db7d8", moon: "#c7b6e8" };
+  const hairDarkByAppearance: Record<HeroAppearance, string> = { ember: "#6d3850", ocean: "#294e78", moon: "#564979" };
+  const coatByOutfit: Record<HeroOutfit, string> = { traveler: "#2f5d9b", guardian: "#8b5c35", rogue: "#49356f" };
+  const coatLightByOutfit: Record<HeroOutfit, string> = { traveler: "#5fb7c3", guardian: "#e2b45c", rogue: "#9b70d2" };
+  const coatShadowByOutfit: Record<HeroOutfit, string> = { traveler: "#23335f", guardian: "#5d382c", rogue: "#2c234d" };
   const P = {
-    hair: "#7a4a2b",
-    hairDark: "#5d3a20",
-    skin: "#f6c49a",
-    skinDark: "#d9966a",
-    tunic: "#3f77c9",
-    tunicDark: "#2c5a9b",
-    belt: "#8a5a2f",
-    pants: "#4a5a7a",
-    boot: "#37435c",
+    ink: "#171526", shadow: "#29244b", hair: hairByAppearance[appearance], hairDark: hairDarkByAppearance[appearance],
+    skin: "#ffd0a6", skinShadow: "#c7786d", coat: coatByOutfit[outfit], coatLight: coatLightByOutfit[outfit],
+    coatShadow: coatShadowByOutfit[outfit], gold: "#f5c85b", trousers: "#30345f", boot: "#211d3c",
     eye: OUTLINE,
   };
 
-  // ประวัติบนลอง: หัว (แสกนจากบน)
-  box(ctx, 2, 1, 9, 10, P.skin); // หน้า
-  px(ctx, 2, 1, 9, 3, P.hair); // เชขหน้าบน
-  px(ctx, 1, 2, 3, 6, P.hairDark); // ผมหลัง (ซ้าย = ด้านหลังหัว)
-  px(ctx, 2, 5, 2, 2, P.hairDark); // สะดือผมหน้า
-  px(ctx, 7, 6, 1, 1, P.eye); // ตาหน้า (ขวา)
-  px(ctx, 4, 6, 1, 1, P.eye); // ตาหลัง
-  px(ctx, 3, 8, 5, 1, P.skinDark); // คางเงา
+  // Long coat silhouette, warm top-left light, deliberate 1px pixel outline.
+  box(ctx, 6, 2, 13, 12, P.skin, P.ink);
+  px(ctx, 5, 3, 3, 8, P.hairDark); px(ctx, 7, 2, 11, 3, P.hair);
+  px(ctx, 6, 5, 4, 4, P.hairDark); px(ctx, 16, 7, 2, 2, P.ink);
+  px(ctx, 10, 11, 6, 2, P.skinShadow);
+  px(ctx, 10, 14, 5, 2, P.skinShadow);
 
-  // คอ + ตัว
-  px(ctx, 5, 11, 4, 1, P.skinDark);
-  box(ctx, 3, 12, 9, 6, P.tunic);
-  px(ctx, 3, 12, 9, 1, P.tunicDark);
-  px(ctx, 3, 16, 9, 1, P.belt); // เข็มขัด
-  px(ctx, 11, 13, 2, 4, P.tunicDark); // แขนหลัง
-
-  // ขา + รองเท้า
-  box(ctx, 4, 18, 3, 2, P.pants, "none");
-  box(ctx, 8, 18, 3, 2, P.pants, "none");
-  px(ctx, 4, 19, 3, 1, P.boot);
-  px(ctx, 8, 19, 3, 1, P.boot);
-
-  // แขนหน้า (จับดาบ — ส่วนดาบวาด runtime)
-  box(ctx, 10, 12, 3, 4, P.skin);
-  px(ctx, 10, 12, 3, 1, P.skinDark);
+  px(ctx, 10, 14, 5, 2, P.skinShadow);
+  box(ctx, 5, 16, 15, 10, P.coat, P.ink);
+  px(ctx, 6, 17, 5, 7, P.coatLight); px(ctx, 16, 17, 3, 8, P.coatShadow);
+  px(ctx, 5, 24, 15, 2, P.gold); px(ctx, 9, 24, 3, 2, P.ink);
+  box(ctx, 2, 17, 4, 9, P.coatShadow, P.ink);
+  box(ctx, 19, 17, 4, 8, P.skin, P.ink); px(ctx, 19, 17, 4, 2, P.skinShadow);
+  box(ctx, 7, 26, 5, 4, P.trousers, P.ink); box(ctx, 15, 26, 5, 4, P.trousers, P.ink);
+  px(ctx, 6, 30, 7, 2, P.boot); px(ctx, 14, 30, 7, 2, P.boot);
+  px(ctx, 17, 18, 2, 4, P.gold); // shoulder clasp
 }
 
-export function heroSprite(): BuiltSprite {
-  return buildSprite("hero", 14, 20, drawHero);
+export type HeroAppearance = "ember" | "ocean" | "moon";
+export type HeroOutfit = "traveler" | "guardian" | "rogue";
+
+export function heroSprite(appearance: HeroAppearance = "ember", outfit: HeroOutfit = "traveler"): BuiltSprite {
+  return buildSprite(`hero-v2-${appearance}-${outfit}`, 24, 32, (ctx) => drawHero(ctx, appearance, outfit));
 }
 
-// ============================================================
-// SLIME 16×12 — สีเขียว มีไฮไลต์ + ตา
+// SLIME 24×18 — redesigned as a faceted gem-like creature
 // ============================================================
 function drawSlime(ctx: CanvasRenderingContext2D, body: string, dark: string, hi: string): void {
-  // ทรงก้อน: วาดเป็นชั้นแถวแนวนอน (กว้างล่าง แคบบน)
-  const cx = 8;
-  const rows: [y: number, w: number][] = [
-    [1, 8], [2, 10], [3, 12], [4, 13], [5, 14], [6, 15], [7, 16], [8, 16], [9, 16],
-  ];
-  for (const [y, w] of rows) {
-    const x = cx - Math.floor(w / 2);
-    px(ctx, x, y, w, 1, y >= 9 ? dark : body);
+  const cx = 12;
+  const rows: [y: number, w: number][] = [[3, 8], [2, 12], [3, 16], [4, 20], [5, 22], [6, 24], [7, 24], [8, 24], [9, 22], [10, 20], [11, 18], [12, 16]];
+  for (let i = 0; i < rows.length; i++) {
+    const [y, w] = rows[i]; const x = cx - Math.floor(w / 2);
+    px(ctx, x, y + 1, w, 1, i > 8 ? dark : body);
   }
-  px(ctx, cx - 4, 2, 3, 1, hi); // ไฮไลต์
-  px(ctx, cx - 4, 3, 2, 1, hi);
-
-  // ตา + ปาก
-  px(ctx, cx - 3, 6, 2, 2, OUTLINE);
-  px(ctx, cx + 2, 6, 2, 2, OUTLINE);
-  px(ctx, cx - 1, 9, 3, 1, dark);
+  px(ctx, 6, 4, 5, 2, hi); px(ctx, 7, 6, 3, 1, hi); px(ctx, 17, 6, 3, 2, "#76d884");
+  px(ctx, 7, 9, 3, 3, OUTLINE); px(ctx, 15, 9, 3, 3, OUTLINE);
+  px(ctx, 8, 10, 1, 1, "#effff1"); px(ctx, 16, 10, 1, 1, "#effff1");
+  px(ctx, 10, 14, 5, 1, dark); px(ctx, 11, 15, 3, 1, dark);
 }
 
 export function slimeSprite(): BuiltSprite {
-  return buildSprite("slime", 16, 12, (c) =>
+  return buildSprite("slime-v2", 24, 18, (c) =>
     drawSlime(c, "#4cbd63", "#2f9447", "#a7f5b4"),
   );
 }
 
 // ============================================================
-// GOBLIN 16×18 — เขียว ผ้าโพกแดง + ตัวเตี้ย
+// GOBLIN 24×26 — redesigned scout silhouette
 // ============================================================
 function drawGoblin(ctx: CanvasRenderingContext2D): void {
-  const P = { g: "#5fa84b", gDark: "#427d38", band: "#c9485d", bandDark: "#8f3044", eye: "#2a1130" };
+  const P = { g: "#79b45d", gDark: "#31564f", gLight: "#c2d873", band: "#d45f68", bandDark: "#6e3858", eye: "#21152d", leather: "#9d633d" };
 
   // หัวกลม (เอียงหน้าขวา)
-  box(ctx, 4, 2, 9, 7, P.g);
-  px(ctx, 4, 2, 9, 2, P.gDark);
-  px(ctx, 3, 4, 2, 3, P.gDark); // หูหลัง
-  px(ctx, 3, 4, 1, 3, OUTLINE); // ขอบหู
-  px(ctx, 4, 3, 9, 2, P.band); // ผ้าโพก
-  px(ctx, 4, 4, 9, 1, P.bandDark);
-  px(ctx, 1, 4, 3, 1, P.band); // หูผ้าโพกแตกแขน
-  px(ctx, 6, 6, 1, 1, P.eye);
-  px(ctx, 9, 6, 1, 1, P.eye);
-  px(ctx, 7, 7, 2, 1, P.gDark); //ปาก
+  box(ctx, 5, 4, 14, 10, P.g, OUTLINE);
+  px(ctx, 5, 4, 14, 3, P.gDark); px(ctx, 8, 7, 6, 2, P.gLight);
+  px(ctx, 2, 6, 4, 5, P.gDark); px(ctx, 2, 6, 2, 5, OUTLINE);
+  px(ctx, 18, 7, 5, 4, P.gDark); px(ctx, 21, 7, 2, 4, OUTLINE);
+  px(ctx, 5, 5, 14, 3, P.band); px(ctx, 5, 7, 14, 2, P.bandDark); px(ctx, 3, 7, 3, 2, P.band);
+  px(ctx, 8, 10, 2, 2, P.eye); px(ctx, 15, 10, 2, 2, P.eye); px(ctx, 9, 10, 1, 1, "#f7e7a0");
+  px(ctx, 10, 13, 5, 1, P.gDark);
 
   // ตัว
-  box(ctx, 5, 9, 7, 4, P.g);
-  px(ctx, 5, 9, 7, 1, P.gDark);
-  px(ctx, 5, 12, 7, 1, P.gDark);
-
-  // ขา
-  px(ctx, 6, 13, 2, 3, P.gDark);
-  px(ctx, 9, 13, 2, 3, P.gDark);
-  px(ctx, 6, 15, 2, 1, OUTLINE);
-  px(ctx, 9, 15, 2, 1, OUTLINE);
-
-  // แขนโถม (จับมีด — มีดวาด runtime)
-  box(ctx, 10, 9, 3, 3, P.g);
-  px(ctx, 10, 9, 3, 1, P.gDark);
+  box(ctx, 6, 14, 12, 8, P.g, OUTLINE); px(ctx, 7, 15, 4, 6, P.gLight); px(ctx, 6, 20, 12, 2, P.gDark);
+  box(ctx, 2, 15, 5, 6, P.gDark, OUTLINE); box(ctx, 17, 14, 5, 7, P.g, OUTLINE);
+  px(ctx, 19, 15, 3, 2, P.leather);
+  box(ctx, 7, 22, 4, 3, P.gDark, OUTLINE); box(ctx, 14, 22, 4, 3, P.gDark, OUTLINE);
+  px(ctx, 6, 25, 6, 1, OUTLINE); px(ctx, 13, 25, 6, 1, OUTLINE);
 }
 
 export function goblinSprite(): BuiltSprite {
-  return buildSprite("goblin", 16, 17, drawGoblin);
+  return buildSprite("goblin-v2", 24, 26, drawGoblin);
 }
 
 // ============================================================
-// KING SLIME 24×16 — สีม่วง + มงกุฎทอง
+// KING SLIME 36×28 — redesigned boss silhouette with crown and gem core
 // ============================================================
 function drawKingSlime(ctx: CanvasRenderingContext2D): void {
-  const body = "#9a5cd0";
-  const dark = "#6f3d9c";
-  const hi = "#cda9f2";
+  const body = "#8d62d2";
+  const dark = "#4d397f";
+  const hi = "#d5b4f4";
 
   const rows: [y: number, w: number, x: number][] = [
-    [4, 10, 7], [5, 14, 5], [6, 17, 4], [7, 19, 3], [8, 22, 2],
-    [9, 22, 2], [10, 23, 1], [11, 23, 1], [12, 24, 0], [13, 24, 0], [14, 22, 1],
+    [7, 16, 10], [8, 22, 7], [9, 28, 4], [10, 32, 2], [11, 34, 1], [12, 36, 0],
+    [13, 36, 0], [14, 36, 0], [15, 34, 1], [16, 34, 1], [17, 32, 2], [18, 30, 3], [19, 26, 5], [20, 22, 7],
   ];
   for (const [y, w, x] of rows) {
-    px(ctx, x, y, w, 1, y >= 12 ? dark : body);
+    px(ctx, x, y, w, 1, y >= 16 ? dark : body);
   }
-  px(ctx, 9, 5, 4, 2, hi);
-  px(ctx, 8, 7, 3, 1, hi);
+  px(ctx, 9, 10, 7, 3, hi); px(ctx, 10, 13, 4, 2, hi); px(ctx, 24, 13, 5, 3, "#6d4eac");
 
   // มงกุฎ
-  box(ctx, 8, 0, 8, 4, "#f2c94c");
-  px(ctx, 8, 2, 8, 2, "#c39428");
-  px(ctx, 10, 1, 2, 2, "#f6e08a");
+  box(ctx, 11, 2, 14, 6, "#f2c94c");
+  px(ctx, 11, 5, 14, 3, "#a96836"); px(ctx, 14, 1, 3, 4, "#f6e08a"); px(ctx, 20, 0, 3, 5, "#f6e08a");
 
   // ตา
-  px(ctx, 7, 8, 3, 3, OUTLINE);
-  px(ctx, 14, 8, 3, 3, OUTLINE);
-  px(ctx, 8, 9, 1, 1, "#c9a4ef");
-  px(ctx, 15, 9, 1, 1, "#c9a4ef");
+  px(ctx, 9, 14, 5, 4, OUTLINE); px(ctx, 22, 14, 5, 4, OUTLINE);
+  px(ctx, 10, 15, 2, 2, "#f6d7ff"); px(ctx, 23, 15, 2, 2, "#f6d7ff");
 
   // ปาก
-  px(ctx, 10, 12, 5, 1, OUTLINE);
+  px(ctx, 14, 20, 9, 2, OUTLINE); px(ctx, 17, 22, 3, 1, OUTLINE);
 }
 
 export function kingSlimeSprite(): BuiltSprite {
-  return buildSprite("kingslime", 24, 16, drawKingSlime);
+  return buildSprite("kingslime-v2", 36, 28, drawKingSlime);
+}
+
+export function wraithSprite(): BuiltSprite { return buildSprite("wraith", 24, 28, drawWraith); }
+export function sporeBeastSprite(): BuiltSprite { return buildSprite("spore-beast", 24, 26, drawSporeBeast); }
+export function colossusSprite(): BuiltSprite { return buildSprite("solar-colossus", 24, 28, drawColossus); }
+
+function drawWraith(ctx: CanvasRenderingContext2D): void {
+  box(ctx, 5, 5, 14, 14, "#59658f", OUTLINE); px(ctx, 7, 4, 10, 3, "#8d9fd0");
+  px(ctx, 8, 9, 3, 3, "#e8f3ff"); px(ctx, 14, 9, 3, 3, "#e8f3ff");
+  px(ctx, 9, 10, 1, 1, "#4b3b76"); px(ctx, 15, 10, 1, 1, "#4b3b76");
+  px(ctx, 4, 19, 4, 7, "#3c416e"); px(ctx, 16, 19, 4, 7, "#3c416e");
+  px(ctx, 9, 20, 6, 7, "#252848");
+}
+
+function drawSporeBeast(ctx: CanvasRenderingContext2D): void {
+  box(ctx, 3, 7, 18, 14, "#9560a7", OUTLINE); px(ctx, 5, 4, 14, 5, "#d584b5");
+  px(ctx, 8, 10, 3, 3, "#211c3b"); px(ctx, 14, 10, 3, 3, "#211c3b");
+  px(ctx, 9, 11, 1, 1, "#f6d18f"); px(ctx, 15, 11, 1, 1, "#f6d18f");
+  px(ctx, 6, 21, 4, 4, "#513d73"); px(ctx, 14, 21, 4, 4, "#513d73");
+}
+
+function drawColossus(ctx: CanvasRenderingContext2D): void {
+  box(ctx, 5, 3, 14, 20, "#d28b4d", OUTLINE); px(ctx, 8, 1, 8, 4, "#f7d56f");
+  px(ctx, 8, 9, 3, 3, "#3d2740"); px(ctx, 14, 9, 3, 3, "#3d2740");
+  px(ctx, 9, 16, 7, 2, "#70404c"); px(ctx, 2, 12, 4, 10, "#a96945"); px(ctx, 18, 12, 4, 10, "#a96945");
+  px(ctx, 7, 23, 4, 4, "#70404c"); px(ctx, 14, 23, 4, 4, "#70404c");
 }
 
 // ============================================================

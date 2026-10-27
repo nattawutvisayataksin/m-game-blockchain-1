@@ -35,7 +35,15 @@ export interface InventoryItem {
   quantity: number;
   fungible: boolean;
   attributes: Record<string, unknown>;
-  instance: { level: number | null; exp: number | null; currentHp: null | number };
+  instance: {
+    level: number | null;
+    exp: number | null;
+    currentHp: null | number;
+    appearance?: string;
+    outfit?: string;
+    stats?: { hp: number; atk: number; def: number; spd: number; crit: number };
+    nextLevelExp?: number;
+  };
   imageUri: string | null;
   web3: {
     isOnChain: boolean;
@@ -57,6 +65,7 @@ export interface BattleEvent {
   kind:
     | "player_attack"
     | "player_skill"
+    | "player_finisher"
     | "player_guard"
     | "player_flee"
     | "enemy_attack"
@@ -85,6 +94,7 @@ export interface BattleView {
   player: { name: string; hp: number; maxHp: number };
   enemy: { name: string; hp: number; maxHp: number };
   skillCd: number;
+  momentum: number;
   log: string[];
   events?: BattleEvent[];
   rewards?: BattleRewardView[];

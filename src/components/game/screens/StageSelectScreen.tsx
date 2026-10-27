@@ -24,6 +24,8 @@ function StageCard({ stage }: { stage: StageInfo }): ReactElement {
   }, [stage.code]);
 
   const enemy = (stage.enemy ?? null) as { name?: string } | null;
+  const enemyKind = String((stage.enemy as { kind?: string } | null)?.kind ?? "");
+  const enemyStats = (stage.enemy ?? {}) as { hp?: number; atk?: number; def?: number };
 
   return (
     <button
@@ -40,7 +42,8 @@ function StageCard({ stage }: { stage: StageInfo }): ReactElement {
           <span className="stage-order">#{stage.order}</span>
         </div>
         <div className="stage-desc">{stage.description ?? ""}</div>
-        <div className="stage-enemy">👹 ศัตรู: {enemy?.name ?? "ไม่ทราบ"}</div>
+        <div className="stage-enemy">👹 ศัตรู: {enemy?.name ?? "ไม่ทราบ"} {enemyKind && <span className="kind-chip">{enemyKind}</span>}</div>
+        <div className="stage-stats">HP {enemyStats.hp ?? "?"} · ATK {enemyStats.atk ?? "?"} · DEF {enemyStats.def ?? "?"}</div>
       </div>
     </button>
   );

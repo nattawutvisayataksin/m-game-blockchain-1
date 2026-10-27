@@ -21,6 +21,7 @@ export default function TitleScreen() {
 
   const login = useGame((s) => s.login);
   const register = useGame((s) => s.register);
+  const startGuest = useGame((s) => s.startGuest);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -37,18 +38,23 @@ export default function TitleScreen() {
 
     const loop = (t: number): void => {
       paintScene(ctx, "fields", t);
-      // ทีมตัวละครยืนรับชม + ทีมมอนสเตอร์ฝั่งตรงข้าม
-      drawSprite(ctx, hero, 74, 150, { scaleY: 1 + (Math.sin(t / 340) < -0.6 ? 0.03 : 0) });
+      // Hero spotlight + layered enemy lineup
+      ctx.fillStyle = "rgba(255, 225, 143, 0.13)";
+      ctx.fillRect(42, 62, 70, 76);
+      ctx.fillStyle = "rgba(20, 16, 43, 0.38)";
+      ctx.fillRect(40, 144, 76, 6);
+      drawSprite(ctx, hero, 78, 150, { scaleY: 1 + (Math.sin(t / 340) < -0.6 ? 0.03 : 0), scaleX: 1.05 });
       drawSprite(ctx, slime, 205, 150, {
         flip: true,
-        scaleY: 1 + Math.sin(t / 300) * 0.06,
-        scaleX: 1 - Math.sin(t / 300) * 0.04,
+        scaleY: 1.05 + Math.sin(t / 300) * 0.06,
+        scaleX: 1.05 - Math.sin(t / 300) * 0.04,
       });
-      drawSprite(ctx, goblin, 248, 150, { flip: true, alpha: Math.sin(t / 700) < 0 ? 0.85 : 1 });
+      drawSprite(ctx, goblin, 248, 150, { flip: true, alpha: Math.sin(t / 700) < 0 ? 0.85 : 1, scaleX: 0.82, scaleY: 0.82 });
       drawSprite(ctx, king, 165, 150, {
         flip: true,
-        alpha: 0.55 + 0.35 * Math.sin(t / 900),
-        scaleY: 1 + Math.sin(t / 380) * 0.04,
+        alpha: 0.65 + 0.25 * Math.sin(t / 900),
+        scaleY: 0.9 + Math.sin(t / 380) * 0.04,
+        scaleX: 0.9,
       });
       raf = requestAnimationFrame(loop);
     };
@@ -75,8 +81,9 @@ export default function TitleScreen() {
         <canvas ref={canvasRef} width={320} height={180} className="pixel-canvas" />
         <div className="title-overlay">
           <div className="game-logo">
-            <span className="logo-line1">⚔️ M-GAME</span>
-            <span className="logo-line2">Turn-based RPG ✦ Pixel Adventure</span>
+            <span className="logo-kicker">A PIXEL ADVENTURE</span>
+            <span className="logo-line1">⚔ M-GAME</span>
+            <span className="logo-line2">VERSION 2 · FUN-FIRST RPG</span>
           </div>
         </div>
       </div>
@@ -145,6 +152,13 @@ export default function TitleScreen() {
             {busy ? "⏳ กำลัง…" : mode === "login" ? "🚪 เข้าเล่น" : "🌱 สมัครและเริ่มเล่น"}
           </button>
         </form>
+
+        <button
+          className="btn btn-gold btn-block"
+          onClick={() => { void startGuest(); }}
+        >
+          ⚡ เริ่มเล่นทันที (Guest)
+        </button>
 
         <button
           className="btn btn-ghost btn-block btn-sm"

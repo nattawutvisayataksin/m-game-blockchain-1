@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth/session";
 import { submitAction } from "@/server/game/battle-engine";
 
 const bodySchema = z.object({
-  action: z.enum(["ATTACK", "SKILL", "GUARD", "FLEE"]),
+  action: z.enum(["ATTACK", "SKILL", "GUARD", "FLEE", "FINISHER"]),
 });
 
 /**

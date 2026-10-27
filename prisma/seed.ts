@@ -1,11 +1,5 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/auth/password";
-import {
-  ACCOUNT_CODES,
-  ensureAccount,
-  ensurePlayerAccount,
-  postEntry,
-} from "../src/server/ledger/ledger";
 
 // ============================================================
 // SEED — สร้างข้อมูลตั้งต้นทั้งเกมให้พร้อมเล่น (idempotent: รันซ้ำได้)
@@ -62,6 +56,33 @@ const TEMPLATES: TemplateSeed[] = [
     attributes: { atk: 8 },
   },
   {
+    code: "weapon_flame_blade",
+    name: "Flame Blade",
+    kind: "WEAPON",
+    rarity: "EPIC",
+    description: "ดาบเปลวเพลิง เพิ่มพลังโจมตีและมีโอกาสคริติคอลสูงขึ้น",
+    attributes: { atk: 14, crit: 0.05 },
+    shopPrice: 480n,
+  },
+  {
+    code: "weapon_moon_scythe",
+    name: "Moon Scythe",
+    kind: "WEAPON",
+    rarity: "LEGENDARY",
+    description: "เคียวจันทร์เสี้ยว เพิ่มพลังโจมตี ความเร็ว และคริติคอล",
+    attributes: { atk: 20, spd: 2, crit: 0.08 },
+    shopPrice: 950n,
+  },
+  {
+    code: "weapon_spore_wand",
+    name: "Spore Wand",
+    kind: "WEAPON",
+    rarity: "RARE",
+    description: "คทาเห็ด เพิ่มพลังสกิลและพลังโจมตี",
+    attributes: { atk: 10, skillPower: 0.2 },
+    shopPrice: 360n,
+  },
+  {
     code: "potion_small",
     name: "Small Potion",
     kind: "CONSUMABLE",
@@ -87,6 +108,22 @@ const TEMPLATES: TemplateSeed[] = [
     rarity: "UNCOMMON",
     description: "ที่ดินทุ่งหญ้าชิ้นที่หนึ่ง เหมาะทำสวนบ้าน/ค่ายเก็บของ (อนาคต: ERC-721)",
     attributes: { yield: 2 },
+  },
+  {
+    code: "armor_traveler_coat",
+    name: "Traveler Coat",
+    kind: "ARMOR",
+    rarity: "UNCOMMON",
+    description: "เสื้อคลุมเดินทางสีคราม เพิ่มความคล่องตัวของนักผจญภัย",
+    attributes: { def: 2, spd: 1 },
+  },
+  {
+    code: "armor_sun_guardian",
+    name: "Sun Guardian Mail",
+    kind: "ARMOR",
+    rarity: "EPIC",
+    description: "เกราะผู้พิทักษ์สุริยะ เพิ่มพลังป้องกันและความโดดเด่น",
+    attributes: { def: 5, hp: 20 },
   },
 ];
 
@@ -145,6 +182,39 @@ const STAGES: StageSeed[] = [
       { templateCode: "land_plains_01", chance: 0.05 },
     ],
   },
+  {
+    code: "stage_04_moonlit_ruins",
+    name: "Moonlit Ruins",
+    order: 4,
+    description: "ซากวิหารใต้แสงจันทร์ที่ถูกเฝ้าโดย Wraith Knight",
+    enemy: { name: "Wraith Knight", kind: "wraith", hp: 230, atk: 23, def: 10, spd: 11, crit: 0.14 },
+    expReward: 210,
+    goldMin: 160,
+    goldMax: 280,
+    dropTable: [{ templateCode: "armor_traveler_coat", chance: 0.25 }, { templateCode: "potion_small", chance: 0.5 }],
+  },
+  {
+    code: "stage_05_mushroom_marsh",
+    name: "Mushroom Marsh",
+    order: 5,
+    description: "บึงเห็ดเรืองแสงที่เต็มไปด้วยพิษและ Spore Beast",
+    enemy: { name: "Spore Beast", kind: "spore", hp: 280, atk: 20, def: 13, spd: 7, crit: 0.1 },
+    expReward: 280,
+    goldMin: 220,
+    goldMax: 360,
+    dropTable: [{ templateCode: "material_slime_jelly", chance: 0.8 }, { templateCode: "armor_sun_guardian", chance: 0.12 }],
+  },
+  {
+    code: "stage_06_sun_temple",
+    name: "Sun Temple",
+    order: 6,
+    description: "วิหารโบราณที่มี Solar Colossus เป็นบททดสอบสุดท้าย",
+    enemy: { name: "Solar Colossus", kind: "colossus", hp: 380, atk: 28, def: 16, spd: 5, crit: 0.18 },
+    expReward: 420,
+    goldMin: 350,
+    goldMax: 520,
+    dropTable: [{ templateCode: "armor_sun_guardian", chance: 0.3 }, { templateCode: "land_plains_01", chance: 0.08 }],
+  },
 ];
 
 const DEMO_STARTER = [
@@ -155,49 +225,7 @@ const DEMO_STARTER = [
 async function main(): Promise<void> {
   console.log("=== M-Game Blockchain: seed ===");
 
-  // --- 1) บัญชี Ledger ระบบ ---
-  await ensureAccount(prisma, {
-    code: ACCOUNT_CODES.treasury,
-    name: "คลังทุนของระบบ (จ่ายรางวัลจากที่นี่)",
-    type: "TREASURY",
-    currency: GOLD,
-  });
-  await ensureAccount(prisma, {
-    code: ACCOUNT_CODES.shop,
-    name: "เหรียญที่รับจากร้านค้า (economy sink)",
-    type: "SYSTEM",
-    currency: GOLD,
-  });
-  await ensureAccount(prisma, {
-    code: ACCOUNT_CODES.mint,
-    name: "แหล่งกำเนิดเหรียญ (อนาคต: Token mint role ของ Server)",
-    type: "MINT",
-    currency: GOLD,
-  });
-  await ensureAccount(prisma, {
-    code: ACCOUNT_CODES.burn,
-    name: "ถังเผาเหรียญ (อนาคต: Token burn)",
-    type: "BURN",
-    currency: GOLD,
-  });
-
-  // --- 2) กำเนิดเหรียญ GOLD ครั้งแรก: DEBIT treasury / CREDIT mint ---
-  const mintCount = await prisma.ledgerEntry.count({ where: { refType: "MINT_BUDGET" } });
-  if (mintCount === 0) {
-    await postEntry(prisma, {
-      refType: "MINT_BUDGET",
-      memo: `ออกงบประมาณเหรียญ GOLD เริ่มต้น ${MINT_BUDGET}`,
-      lines: [
-        { accountCode: ACCOUNT_CODES.treasury, side: "DEBIT", amount: MINT_BUDGET },
-        { accountCode: ACCOUNT_CODES.mint, side: "CREDIT", amount: MINT_BUDGET },
-      ],
-    });
-    console.log("• MINT_BUDGET: บันทึกบัญชีครั้งแรกเรียบร้อย");
-  } else {
-    console.log("• MINT_BUDGET มีอยู่แล้ว — ข้าม");
-  }
-
-  // --- 3) Item templates ---
+  // --- 1) Item templates ---
   for (const t of TEMPLATES) {
     await prisma.itemTemplate.upsert({
       where: { code: t.code },
@@ -224,7 +252,7 @@ async function main(): Promise<void> {
   }
   console.log(`• item templates: ${TEMPLATES.length} ชิ้น`);
 
-  // --- 4) Stage templates (รวม category exp/gold ของรางวัลใน enemy json) ---
+  // --- 2) Stage templates (รวม category exp/gold ของรางวัลใน enemy json) ---
   for (const s of STAGES) {
     const enemy: Record<string, unknown> = { ...s.enemy };
     enemy["expReward"] = s.expReward;
@@ -252,7 +280,7 @@ async function main(): Promise<void> {
   }
   console.log(`• stage templates: ${STAGES.length} ด่าน`);
 
-  // --- 5) ผู้เล่นเดโม่ (สมัครใช้งานได้จริงเลย) ---
+  // --- 3) ผู้เล่นเดโม่ (สมัครใช้งานได้จริงเลย) ---
   const demoIdentity = await prisma.authIdentity.findUnique({
     where: { provider_subject: { provider: "EMAIL_PASSWORD", subject: DEMO_EMAIL } },
   });
@@ -267,7 +295,7 @@ async function main(): Promise<void> {
     });
 
     await prisma.$transaction(async (tx) => {
-      await ensurePlayerAccount(tx, user.id);
+      await tx.user.update({ where: { id: user.id }, data: { goldBalance: DEMO_SIGNUP_BONUS } });
 
       for (const starter of DEMO_STARTER) {
         const template = await tx.itemTemplate.findUnique({ where: { code: starter.code } });
@@ -282,15 +310,6 @@ async function main(): Promise<void> {
         });
       }
 
-      await postEntry(tx, {
-        refType: "SIGNUP_BONUS",
-        refId: user.id,
-        memo: `โบนัสต้อนรับผู้เล่นใหม่ (${DEMO_DISPLAY_NAME})`,
-        lines: [
-          { accountCode: `player:${user.id}`, side: "DEBIT", amount: DEMO_SIGNUP_BONUS },
-          { accountCode: ACCOUNT_CODES.treasury, side: "CREDIT", amount: DEMO_SIGNUP_BONUS },
-        ],
-      });
     });
     console.log(`• ผู้เล่นเดโม่: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
   } else {

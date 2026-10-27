@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from "react";
-import { battleAction, startBattle } from "../api";
+import { abandonCurrentBattle, ApiFailure, battleAction, startBattle } from "../api";
 import { useGame } from "../store";
 import { BattleRenderer, sceneKindOf } from "../pixel/renderer";
 import { sfx } from "../sfx";
@@ -30,6 +30,7 @@ export default function BattleScreen() {
   const [busy, setBusy] = useState(true);
   const [ended, setEnded] = useState<EndStatus | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   // ---------- เปิดการต่อสู้ ----------
   useEffect(() => {
@@ -41,7 +42,19 @@ export default function BattleScreen() {
     setLoadErr(null);
     setBusy(true);
 
-    startBattle(stage.code, charId, weaponId ?? undefined)
+    const openBattle = async (): Promise<BattleView> => {
+      try {
+        return await startBattle(stage.code, charId, weaponId ?? undefined);
+      } catch (e) {
+        // A previous tab can leave an orphaned IN_PROGRESS row. Recover once,
+        // then open the requested battle instead of showing a dead-end error UI.
+        if (!(e instanceof ApiFailure) || e.code !== "CONFLICT") throw e;
+        await abandonCurrentBattle();
+        return startBattle(stage.code, charId, weaponId ?? undefined);
+      }
+    };
+
+    openBattle()
       .then((v) => {
         if (cancelled) return;
         lastViewRef.current = v;
@@ -51,6 +64,8 @@ export default function BattleScreen() {
         if (!cv) return;
         const r = new BattleRenderer(cv, {
           stageCode: stage.code,
+          heroAppearance: (useGame.getState().items.find((i) => i.id === charId)?.instance.appearance as "ember" | "ocean" | "moon") ?? "ember",
+          heroOutfit: (useGame.getState().items.find((i) => i.id === charId)?.instance.outfit as "traveler" | "guardian" | "rogue") ?? "traveler",
           playerHp: v.player.hp,
           playerMaxHp: v.player.maxHp,
           enemyHp: v.enemy.hp,
@@ -71,7 +86,7 @@ export default function BattleScreen() {
       })
       .catch((e) => {
         if (cancelled) return;
-        setLoadErr(useGame.getState().errText(e));
+          setLoadErr(useGame.getState().errText(e));
         setBusy(false);
       });
 
@@ -83,7 +98,7 @@ export default function BattleScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage?.id, charId, weaponId]);
 
-  const act = (action: "ATTACK" | "SKILL" | "GUARD" | "FLEE"): void => {
+  const act = (action: "ATTACK" | "SKILL" | "GUARD" | "FLEE" | "FINISHER"): void => {
     const r = rendererRef.current;
     if (!r || !view || busy || ended || r.isBusy()) return;
     setBusy(true);
@@ -114,6 +129,19 @@ export default function BattleScreen() {
     setScreen("hub");
   };
 
+  const recover = async (): Promise<void> => {
+    setRecovering(true);
+    try {
+      await abandonCurrentBattle();
+      await useGame.getState().refresh();
+      setScreen("stageSelect");
+      useGame.getState().showBanner("ยกเลิกการต่อสู้เดิมแล้ว เริ่มด่านใหม่ได้เลย");
+    } catch (e) {
+      setLoadErr(useGame.getState().errText(e));
+      setRecovering(false);
+    }
+  };
+
   if (!stage || !charId) {
     return (
       <div className="battle-wrap">
@@ -125,6 +153,7 @@ export default function BattleScreen() {
   }
 
   const skillCd = view?.skillCd ?? 0;
+  const momentum = view?.momentum ?? 0;
   const locked = busy || ended !== null || loadErr !== null;
   const skillDisabled = locked || skillCd > 0;
 
@@ -134,8 +163,8 @@ export default function BattleScreen() {
         <button className="btn btn-ghost btn-sm" onClick={leave}>
           ← ออก
         </button>
-        <span className="battle-stage">🗺️ {stage.name}</span>
-        <span className="battle-turn">เทิร์น {view?.turn ?? 0}</span>
+        <span className="battle-stage"><span className="stage-eyebrow">CURRENT MISSION</span>🗺️ {stage.name}</span>
+        <span className="battle-turn">TURN <strong>{String(view?.turn ?? 0).padStart(2, "0")}</strong></span>
       </header>
 
       <div className="canvas-frame battle-frame">
@@ -189,10 +218,15 @@ export default function BattleScreen() {
         <button className="action-btn guard" disabled={locked} onClick={() => act("GUARD")}>
           🛡️ <span>ป้องกัน</span>
         </button>
+        <button className="action-btn finisher" disabled={locked || momentum < 100} onClick={() => act("FINISHER")}>
+          💥 <span>{momentum >= 100 ? "FINISHER" : `Momentum ${momentum}%`}</span>
+        </button>
         <button className="action-btn flee" disabled={locked} onClick={() => act("FLEE")}>
           🏃 <span>หนี</span>
         </button>
       </div>
+
+      <div className="battle-hint">เลือกคำสั่งหนึ่งอย่างต่อเทิร์น · ผลการต่อสู้คำนวณโดยเซิร์ฟเวอร์</div>
 
       <div className="battle-log">
         {(view?.log ?? []).slice(-4).map((line, i, arr) => (

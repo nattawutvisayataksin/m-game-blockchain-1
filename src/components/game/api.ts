@@ -8,6 +8,7 @@ import type {
   BattleView,
   ClaimSummary,
   InventoryResponse,
+  InventoryItem,
   MeResponse,
   PendingReward,
   ShopTemplate,
@@ -82,6 +83,10 @@ export function login(email: string, password: string): Promise<{ user: { id: st
   });
 }
 
+export function startGuest(): Promise<{ user: { id: string; email: null; displayName: string }; token: string }> {
+  return call("POST", "/api/auth/guest").then((r: any) => r);
+}
+
 export function logout(): void {
   storeToken(null);
   void fetch("/api/auth/logout", { method: "POST" });
@@ -92,6 +97,8 @@ export const me = () => call<MeResponse>("GET", "/api/auth/me");
 // ---------- เนื้อหาเกม ----------
 export const stages = () => call<StageInfo[]>("GET", "/api/stages");
 export const inventory = () => call<InventoryResponse>("GET", "/api/inventory");
+export const customizeCharacter = (inventoryId: string, appearance: string, outfit: string) =>
+  call<InventoryItem>("PATCH", `/api/characters/${inventoryId}/customize`, { appearance, outfit });
 export const shopList = () => call<ShopTemplate[]>("GET", "/api/shop");
 export const purchase = (templateCode: string, quantity: number) =>
   call<{ itemCode: string; quantityPurchased: number; goldSpent: string; goldBalance: string; inventoryId: string }>(
@@ -103,8 +110,10 @@ export const purchase = (templateCode: string, quantity: number) =>
 export const startBattle = (stageCode: string, characterInvId: string, weaponInvId?: string) =>
   call<BattleView>("POST", "/api/battles", { stageCode, characterInvId, weaponInvId });
 
-export const battleAction = (id: string, action: "ATTACK" | "SKILL" | "GUARD" | "FLEE") =>
+export const battleAction = (id: string, action: "ATTACK" | "SKILL" | "GUARD" | "FLEE" | "FINISHER") =>
   call<BattleView>("POST", `/api/battles/${id}/action`, { action });
+
+export const abandonCurrentBattle = () => call<BattleView | null>("DELETE", "/api/battles/current");
 
 export const pendingRewards = () => call<{ pendingCount: number; rewards: PendingReward[] }>("GET", "/api/rewards");
 export const claimRewards = (grantIds?: string[]) =>

@@ -2,8 +2,8 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { playerBalance } from "@/server/ledger/ledger";
 import { env } from "@/lib/env";
+import { characterStats, expToNextLevel } from "@/server/game/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -41,11 +41,13 @@ export const GET = async (req: NextRequest) => {
       include: { template: true },
       orderBy: { earnedAt: "desc" },
     }) as Promise<InventoryRow[]>,
-    prisma.$transaction((tx) => playerBalance(tx, user.id)),
+    Promise.resolve(user.goldBalance),
   ]);
 
   const data = items.map((row) => {
     const instance = (row.instanceData ?? EMPTY_STATS) as Record<string, unknown>;
+    const level = Number(instance.level ?? 1);
+    const stats = row.template.kind === "CHARACTER" ? characterStats(row.template.attributes, level) : undefined;
     return {
       id: row.id,
       code: row.template.code,
@@ -59,6 +61,10 @@ export const GET = async (req: NextRequest) => {
         level: instance.level ?? null,
         exp: instance.exp ?? null,
         currentHp: instance.currentHp ?? null,
+        appearance: instance.appearance ?? "ember",
+        outfit: instance.outfit ?? "traveler",
+        stats,
+        nextLevelExp: row.template.kind === "CHARACTER" ? expToNextLevel(level) : undefined,
       },
       imageUri: row.template.imageUri,
       // ---- Web3 ช่องข้อมูล (ซ่อนอยู่จนกว่า mint จริง — ตามโจทย์ Phase 3) ----

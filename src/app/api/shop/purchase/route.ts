@@ -9,7 +9,7 @@ const bodySchema = z.object({
   quantity: z.number().int().min(1).max(99).default(1),
 });
 
-/** POST /api/shop/purchase — ซื้อ: เดิน Ledger ฝั่งใช้เงิน + ได้ item */
+/** POST /api/shop/purchase — ซื้อ: หัก GOLD ตรง + ได้ item */
 export const POST = withRoute(async (req: NextRequest) => {
   const user = await requireUser(req);
   const body = await parseBody(req, bodySchema);

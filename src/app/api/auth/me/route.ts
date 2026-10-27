@@ -1,13 +1,12 @@
 import type { NextRequest } from "next/server";
 import { ok, withRoute } from "@/lib/http";
 import { requireUser } from "@/lib/auth/session";
-import { playerBalance } from "@/server/ledger/ledger";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 
 export const GET = withRoute(async (req: NextRequest) => {
   const user = await requireUser(req);
-  const balance = await prisma.$transaction((tx) => playerBalance(tx, user.id));
+  const balance = user.goldBalance;
   const walletLinkCount = await prisma.authIdentity.count({ where: { userId: user.id } });
 
   return ok({

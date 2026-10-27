@@ -4,12 +4,6 @@ import { env } from "@/lib/env";
 import { ApiError } from "@/lib/http";
 import { hashPassword } from "@/lib/auth/password";
 import type { PrismaTx } from "@/server/ledger/ledger";
-import {
-  ACCOUNT_CODES,
-  ensurePlayerAccount,
-  playerAccountCode,
-  postEntry,
-} from "@/server/ledger/ledger";
 
 // ============================================================
 // Bootstrap บัญชีผู้เล่นใหม่ — ใช้ร่วมกันทั้ง register (email)
@@ -62,24 +56,23 @@ export async function bootstrapNewUser(input: CreateIdentityInput): Promise<User
     },
   });
 
-  await prisma.$transaction(async (tx: PrismaTx) => {
-    await ensurePlayerAccount(tx, user.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data: { goldBalance: env.signupBonusGold } });
     await grantStarterItems(tx, user.id);
-
-    const bonus = env.signupBonusGold;
-    if (bonus > 0n) {
-      await postEntry(tx, {
-        refType: "SIGNUP_BONUS",
-        refId: user.id,
-        memo: `โบนัสต้อนรับผู้เล่นใหม่ (${user.displayName})`,
-        lines: [
-          { accountCode: playerAccountCode(user.id), side: "DEBIT", amount: bonus },
-          { accountCode: ACCOUNT_CODES.treasury, side: "CREDIT", amount: bonus },
-        ],
-      });
-    }
   });
 
+  return user;
+}
+
+/** V2 guest profile: playable immediately without email/password. */
+export async function bootstrapGuestUser(): Promise<User> {
+  const user = await prisma.user.create({
+    data: { displayName: `Guest-${Math.floor(1000 + Math.random() * 9000)}` },
+  });
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data: { goldBalance: env.signupBonusGold } });
+    await grantStarterItems(tx, user.id);
+  });
   return user;
 }
 
